@@ -319,10 +319,26 @@ function showFatalError(titre, details){
     </div>`;
 }
 // Sécurité : si rien n'a démarré après 8 secondes, on affiche un message au lieu de rester bloqué en silence
+window._authFired = false;
 setTimeout(function(){
   const el = document.getElementById('loadingScreen');
-  if(el && el.style.display !== 'none'){
-    showFatalError('Chargement bloqué', 'La page est restée sur l\'écran de chargement plus de 8 secondes.\n\nCauses possibles :\n- Connexion internet coupée\n- Firebase SDK non chargé (CDN bloqué)\n- Erreur silencieuse au démarrage');
+  if(el && el.style.display !== 'none' && !window._authFired){
+    // Test réseau direct vers la base de données Firebase pour distinguer
+    // "réseau bloqué" de "Auth SDK bloqué spécifiquement"
+    const testUrl = 'https://salem-dbs-default-rtdb.firebaseio.com/.json?shallow=true';
+    const controller = new AbortController();
+    const to = setTimeout(()=>controller.abort(), 5000);
+    fetch(testUrl, {signal: controller.signal})
+      .then(r=>{
+        clearTimeout(to);
+        showFatalError('Chargement bloqué — réseau Database OK',
+          `La connexion (Auth) ne répond pas, mais l'accès direct à la base de données Firebase fonctionne (code ${r.status}).\n\nCela pointe vers un blocage spécifique du service Firebase Authentication par ton réseau/opérateur, un VPN, ou un bloqueur de scripts.\n\nEssaie : données mobiles au lieu du Wi-Fi (ou l'inverse), désactive tout VPN, ou un autre réseau.`);
+      })
+      .catch(err=>{
+        clearTimeout(to);
+        showFatalError('Chargement bloqué — réseau Firebase inaccessible',
+          `Impossible de joindre les serveurs Firebase du tout (${err.message}).\n\nCela pointe vers un blocage réseau général (opérateur, DNS, VPN, pare-feu) empêchant l'accès à *.firebaseio.com et *.googleapis.com.\n\nEssaie : données mobiles au lieu du Wi-Fi (ou l'inverse), désactive tout VPN, ou un autre réseau.`);
+      });
   }
 }, 8000);
 </script>
@@ -425,6 +441,7 @@ async function checkMandateExpirations(){
 
 /* ====================== AUTH ====================== */
 auth.onAuthStateChanged(async (user)=>{
+  window._authFired = true;
   document.getElementById('loadingScreen').style.display='none';
   if(user){
     currentUser = user;
