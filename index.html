@@ -299,57 +299,44 @@ hr.sep{border:none;border-top:1px solid var(--navy-border);margin:16px 0;}
 <div class="toast-stack" id="toastStack"></div>
 <div id="printArea" class="print-only"></div>
 
+<div id="dbgPanel" style="position:fixed;left:0;right:0;bottom:0;max-height:55vh;overflow-y:auto;background:#05070f;border-top:2px solid #d4af37;font-family:monospace;font-size:11px;color:#9aa3c0;z-index:99999;padding:10px 12px;display:none;">
+  <div style="color:#f0cc5e;font-weight:bold;margin-bottom:6px;">🔍 Diagnostic PAEDS — n'efface jamais, fais défiler pour tout voir</div>
+  <div id="dbgLog"></div>
+</div>
+
 <script>
-/* ====================== DIAGNOSTIC — affiche toute erreur directement à l'écran ====================== */
+/* ====================== DIAGNOSTIC PERMANENT — journal qui ne s'efface jamais ====================== */
+function dbg(msg, isError){
+  const panel = document.getElementById('dbgPanel');
+  const log = document.getElementById('dbgLog');
+  if(!panel || !log) return;
+  panel.style.display = 'block';
+  const t = new Date().toLocaleTimeString('fr-FR');
+  const line = document.createElement('div');
+  line.style.cssText = 'padding:3px 0;border-bottom:1px solid #1a2547;' + (isError?'color:#e0584f;':'color:#9aa3c0;');
+  line.textContent = `[${t}] ${msg}`;
+  log.appendChild(line);
+  panel.scrollTop = panel.scrollHeight;
+}
+dbg('Script démarré.');
 window.addEventListener('error', function(e){
-  showFatalError('Erreur JavaScript', e.message + '\n\nFichier : ' + (e.filename||'—') + '\nLigne : ' + (e.lineno||'—'));
+  dbg('ERREUR JS : ' + e.message + ' (' + (e.filename||'?').split('/').pop() + ':' + (e.lineno||'?') + ')', true);
 });
 window.addEventListener('unhandledrejection', function(e){
-  showFatalError('Erreur promesse', (e.reason && e.reason.message) ? e.reason.message : JSON.stringify(e.reason));
+  dbg('ERREUR PROMESSE : ' + ((e.reason && e.reason.message) ? e.reason.message : JSON.stringify(e.reason)), true);
 });
-function showFatalError(titre, details){
-  const el = document.getElementById('loadingScreen');
-  if(!el) return;
-  el.innerHTML = `
-    <div style="max-width:340px;padding:20px;text-align:center;">
-      <div style="font-size:32px;margin-bottom:10px;">⚠️</div>
-      <div style="color:#e0584f;font-weight:700;font-size:15px;margin-bottom:10px;">${titre}</div>
-      <div style="color:#9aa3c0;font-size:12px;white-space:pre-wrap;text-align:left;background:#121b36;padding:12px;border-radius:8px;border:1px solid #27315a;">${details}</div>
-      <div style="color:#6b7393;font-size:11px;margin-top:14px;">Fais une capture d'écran de ce message.</div>
-    </div>`;
-}
-// Sécurité : si rien n'a démarré après 8 secondes, on affiche un message au lieu de rester bloqué en silence
 window._authFired = false;
-setTimeout(function(){
-  const el = document.getElementById('loadingScreen');
-  if(el && el.style.display !== 'none' && !window._authFired){
-    // Test réseau direct vers la base de données Firebase pour distinguer
-    // "réseau bloqué" de "Auth SDK bloqué spécifiquement"
-    const testUrl = 'https://salem-dbs-default-rtdb.firebaseio.com/.json?shallow=true';
-    const controller = new AbortController();
-    const to = setTimeout(()=>controller.abort(), 5000);
-    fetch(testUrl, {signal: controller.signal})
-      .then(r=>{
-        clearTimeout(to);
-        showFatalError('Chargement bloqué — réseau Database OK',
-          `La connexion (Auth) ne répond pas, mais l'accès direct à la base de données Firebase fonctionne (code ${r.status}).\n\nCela pointe vers un blocage spécifique du service Firebase Authentication par ton réseau/opérateur, un VPN, ou un bloqueur de scripts.\n\nEssaie : données mobiles au lieu du Wi-Fi (ou l'inverse), désactive tout VPN, ou un autre réseau.`);
-      })
-      .catch(err=>{
-        clearTimeout(to);
-        showFatalError('Chargement bloqué — réseau Firebase inaccessible',
-          `Impossible de joindre les serveurs Firebase du tout (${err.message}).\n\nCela pointe vers un blocage réseau général (opérateur, DNS, VPN, pare-feu) empêchant l'accès à *.firebaseio.com et *.googleapis.com.\n\nEssaie : données mobiles au lieu du Wi-Fi (ou l'inverse), désactive tout VPN, ou un autre réseau.`);
-      });
-  }
-}, 8000);
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <script>
+dbg('Après balises <script> Firebase CDN.');
 /* ====================== FIREBASE INIT ====================== */
 if(typeof firebase === 'undefined'){
-  showFatalError('Firebase non chargé', 'Le SDK Firebase (depuis gstatic.com) n\'a pas pu être chargé.\n\nVérifie ta connexion internet, ou qu\'aucun bloqueur de publicité / VPN ne bloque gstatic.com.');
-  throw new Error('Firebase SDK not loaded');
+  dbg('firebase est UNDEFINED — le SDK ne s\'est pas chargé (CDN bloqué ou pas de réseau).', true);
+} else {
+  dbg('SDK Firebase chargé avec succès.');
 }
 const firebaseConfig = {
   apiKey: "AIzaSyBjmJHuNe0GjblwBrP1Rakqr9HgZcfgYT8",
@@ -360,11 +347,30 @@ const firebaseConfig = {
   messagingSenderId: "1018849656489",
   appId: "1:1018849656489:web:283f7174c426a7302373b8"
 };
-firebase.initializeApp(firebaseConfig);
+try{
+  firebase.initializeApp(firebaseConfig);
+  dbg('firebase.initializeApp() OK.');
+}catch(e){ dbg('ERREUR initializeApp : ' + e.message, true); }
 const auth = firebase.auth();
 const db = firebase.database();
+dbg('auth et db créés.');
 const ROOT = "paeds"; // racine dédiée pour isoler PAEDS du reste du projet salem-dbs
 const R = (path) => db.ref(`${ROOT}/${path}`);
+
+// Test réseau direct, indépendant de Auth, pour vérifier l'accès à Firebase
+dbg('Test de connexion réseau vers Firebase Database…');
+const _testController = new AbortController();
+const _testTimeout = setTimeout(()=>_testController.abort(), 6000);
+fetch('https://salem-dbs-default-rtdb.firebaseio.com/.json?shallow=true', {signal:_testController.signal})
+  .then(r=>{ clearTimeout(_testTimeout); dbg('Database accessible — réponse HTTP ' + r.status + '.'); })
+  .catch(err=>{ clearTimeout(_testTimeout); dbg('Database INACCESSIBLE : ' + err.message, true); });
+
+// Diagnostic si onAuthStateChanged ne répond jamais après 10s
+setTimeout(function(){
+  if(!window._authFired){
+    dbg('⚠️ onAuthStateChanged n\'a toujours pas répondu après 10 secondes.', true);
+  }
+}, 10000);
 
 let currentUser = null;   // {uid, email}
 let currentProfile = null; // {role, nom, ministereId, ...}
@@ -442,28 +448,40 @@ async function checkMandateExpirations(){
 /* ====================== AUTH ====================== */
 auth.onAuthStateChanged(async (user)=>{
   window._authFired = true;
+  dbg('onAuthStateChanged déclenché. Utilisateur : ' + (user ? user.email : 'aucun (déconnecté)'));
   document.getElementById('loadingScreen').style.display='none';
   if(user){
     currentUser = user;
-    const snap = await R('users/'+user.uid).once('value');
-    if(!snap.exists()){
-      showAuthError("Compte non reconnu dans PAEDS. Contactez l'administrateur.");
-      auth.signOut();
-      return;
+    try{
+      dbg('Lecture du profil paeds/users/' + user.uid + '…');
+      const snap = await R('users/'+user.uid).once('value');
+      dbg('Lecture profil terminée. Existe : ' + snap.exists());
+      if(!snap.exists()){
+        showAuthError("Compte non reconnu dans PAEDS. Contactez l'administrateur.");
+        auth.signOut();
+        return;
+      }
+      currentProfile = snap.val();
+      dbg('Profil chargé : rôle=' + currentProfile.role + ', statut=' + currentProfile.statut);
+      if(currentProfile.statut === 'suspendu'){
+        showAuthError("Ce compte a été suspendu. Contactez l'administrateur.");
+        auth.signOut();
+        return;
+      }
+      document.getElementById('authScreen').style.display='none';
+      document.getElementById('appShell').style.display='block';
+      dbg('Affichage de l\'application…');
+      initAppShell();
+      dbg('initAppShell() terminé avec succès.');
+    }catch(e){
+      dbg('ERREUR pendant le chargement du profil : ' + e.message, true);
+      showAuthError("Erreur de connexion à la base de données : " + e.message);
     }
-    currentProfile = snap.val();
-    if(currentProfile.statut === 'suspendu'){
-      showAuthError("Ce compte a été suspendu. Contactez l'administrateur.");
-      auth.signOut();
-      return;
-    }
-    document.getElementById('authScreen').style.display='none';
-    document.getElementById('appShell').style.display='block';
-    initAppShell();
   } else {
     currentUser = null; currentProfile = null;
     document.getElementById('authScreen').style.display='flex';
     document.getElementById('appShell').style.display='none';
+    dbg('Écran de connexion affiché.');
   }
 });
 
@@ -477,10 +495,13 @@ function doLogin(){
   const errEl = document.getElementById('authError');
   errEl.style.display='none';
   if(!email || !pwd){ showAuthError("Veuillez remplir tous les champs."); return; }
+  dbg('Tentative de connexion : ' + email);
   const btn = document.getElementById('loginBtn');
   btn.textContent='Connexion…'; btn.disabled=true;
   auth.signInWithEmailAndPassword(email,pwd)
+    .then(()=>{ dbg('signInWithEmailAndPassword() résolu avec succès.'); })
     .catch(err=>{
+      dbg('ERREUR signInWithEmailAndPassword : ' + err.code + ' — ' + err.message, true);
       let msg = "Identifiants incorrects.";
       if(err.code==='auth/user-not-found') msg="Aucun compte avec cet email.";
       if(err.code==='auth/wrong-password') msg="Mot de passe incorrect.";
