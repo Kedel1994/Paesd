@@ -299,11 +299,42 @@ hr.sep{border:none;border-top:1px solid var(--navy-border);margin:16px 0;}
 <div class="toast-stack" id="toastStack"></div>
 <div id="printArea" class="print-only"></div>
 
+<script>
+/* ====================== DIAGNOSTIC — affiche toute erreur directement à l'écran ====================== */
+window.addEventListener('error', function(e){
+  showFatalError('Erreur JavaScript', e.message + '\n\nFichier : ' + (e.filename||'—') + '\nLigne : ' + (e.lineno||'—'));
+});
+window.addEventListener('unhandledrejection', function(e){
+  showFatalError('Erreur promesse', (e.reason && e.reason.message) ? e.reason.message : JSON.stringify(e.reason));
+});
+function showFatalError(titre, details){
+  const el = document.getElementById('loadingScreen');
+  if(!el) return;
+  el.innerHTML = `
+    <div style="max-width:340px;padding:20px;text-align:center;">
+      <div style="font-size:32px;margin-bottom:10px;">⚠️</div>
+      <div style="color:#e0584f;font-weight:700;font-size:15px;margin-bottom:10px;">${titre}</div>
+      <div style="color:#9aa3c0;font-size:12px;white-space:pre-wrap;text-align:left;background:#121b36;padding:12px;border-radius:8px;border:1px solid #27315a;">${details}</div>
+      <div style="color:#6b7393;font-size:11px;margin-top:14px;">Fais une capture d'écran de ce message.</div>
+    </div>`;
+}
+// Sécurité : si rien n'a démarré après 8 secondes, on affiche un message au lieu de rester bloqué en silence
+setTimeout(function(){
+  const el = document.getElementById('loadingScreen');
+  if(el && el.style.display !== 'none'){
+    showFatalError('Chargement bloqué', 'La page est restée sur l\'écran de chargement plus de 8 secondes.\n\nCauses possibles :\n- Connexion internet coupée\n- Firebase SDK non chargé (CDN bloqué)\n- Erreur silencieuse au démarrage');
+  }
+}, 8000);
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <script>
 /* ====================== FIREBASE INIT ====================== */
+if(typeof firebase === 'undefined'){
+  showFatalError('Firebase non chargé', 'Le SDK Firebase (depuis gstatic.com) n\'a pas pu être chargé.\n\nVérifie ta connexion internet, ou qu\'aucun bloqueur de publicité / VPN ne bloque gstatic.com.');
+  throw new Error('Firebase SDK not loaded');
+}
 const firebaseConfig = {
   apiKey: "AIzaSyBjmJHuNe0GjblwBrP1Rakqr9HgZcfgYT8",
   authDomain: "salem-dbs.firebaseapp.com",
