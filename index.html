@@ -2866,6 +2866,7 @@ async function renderRegistre_cultes(){
   wrap.innerHTML = '<div class="empty-state"><p>Chargement…</p></div>';
   const snap = await RG('cultes').once('value');
   let list = []; snap.forEach(c=>list.push({id:c.key,...c.val()}));
+  dbg('Lecture cultes : ' + list.length + ' enregistrement(s) trouvé(s) — clés : ' + list.map(c=>c.id).join(', '));
   list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   wrap.innerHTML = `
@@ -3068,6 +3069,7 @@ async function renderRegistre_cene(){
   wrap.innerHTML = '<div class="empty-state"><p>Chargement…</p></div>';
   const snap = await RG('saintesCenes').once('value');
   let list = []; snap.forEach(c=>list.push({id:c.key,...c.val()}));
+  dbg('Lecture Sainte-Cène : ' + list.length + ' enregistrement(s) trouvé(s) — clés : ' + list.map(c=>c.id).join(', '));
   list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   wrap.innerHTML = `
