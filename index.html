@@ -302,10 +302,52 @@ hr.sep{border:none;border-top:1px solid var(--navy-border);margin:16px 0;}
 <div class="toast-stack" id="toastStack"></div>
 <div id="printArea" class="print-only"></div>
 
+<div id="dbgPanel" style="position:fixed;left:0;right:0;bottom:0;max-height:38px;overflow-y:auto;background:#05070f;border-top:2px solid #d4af37;font-family:monospace;font-size:11px;color:#9aa3c0;z-index:99999;padding:0;display:none;transition:max-height .2s;">
+  <div id="dbgHeader" onclick="toggleDbgPanel()" style="position:sticky;top:0;background:#05070f;color:#f0cc5e;font-weight:bold;padding:8px 12px;border-bottom:1px solid #27315a;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+    <span>🔍 Diagnostic PAEDS <span id="dbgCount" style="color:#6b7393;font-weight:normal;"></span></span>
+    <span id="dbgToggleIcon">▲ agrandir</span>
+  </div>
+  <div id="dbgLog" style="padding:8px 12px;display:none;"></div>
+</div>
+
 <script>
-/* Journal technique silencieux (visible uniquement dans les outils développeur du navigateur) */
+/* Journal de diagnostic — reste réduit à une petite barre, s'ouvre automatiquement
+   uniquement si une vraie erreur JavaScript se produit. */
+window._dbgExpanded = false;
+window._dbgCount = 0;
 function dbg(msg, isError){
+  const panel = document.getElementById('dbgPanel');
+  const log = document.getElementById('dbgLog');
+  const countEl = document.getElementById('dbgCount');
+  if(!panel || !log) return;
+  panel.style.display = 'block';
+  window._dbgCount++;
+  if(countEl) countEl.textContent = '(' + window._dbgCount + ')';
+  const t = new Date().toLocaleTimeString('fr-FR');
+  const line = document.createElement('div');
+  line.style.cssText = 'padding:3px 0;border-bottom:1px solid #1a2547;' + (isError?'color:#e0584f;':'color:#9aa3c0;');
+  line.textContent = `[${t}] ${msg}`;
+  log.appendChild(line);
+  if(isError && !window._dbgExpanded) toggleDbgPanel(true);
+  if(window._dbgExpanded) panel.scrollTop = panel.scrollHeight;
   if(isError) console.error('[PAEDS]', msg);
+}
+function toggleDbgPanel(forceOpen){
+  const panel = document.getElementById('dbgPanel');
+  const log = document.getElementById('dbgLog');
+  const icon = document.getElementById('dbgToggleIcon');
+  const willExpand = forceOpen === true ? true : !window._dbgExpanded;
+  window._dbgExpanded = willExpand;
+  if(willExpand){
+    panel.style.maxHeight = '55vh';
+    log.style.display = 'block';
+    icon.textContent = '▼ réduire';
+    panel.scrollTop = panel.scrollHeight;
+  } else {
+    panel.style.maxHeight = '38px';
+    log.style.display = 'none';
+    icon.textContent = '▲ agrandir';
+  }
 }
 window.addEventListener('error', function(e){
   dbg('ERREUR JS : ' + e.message + ' (' + (e.filename||'?').split('/').pop() + ':' + (e.lineno||'?') + ')', true);
@@ -2890,6 +2932,7 @@ function openCulteForm(existing){
   `);
 }
 async function saveCulte(existingId){
+  dbg('saveCulte() appelé, existingId=' + existingId);
   const data = {
     typeCulte: document.getElementById('f_cuType').value,
     date: document.getElementById('f_cuDate').value,
@@ -2911,19 +2954,22 @@ async function saveCulte(existingId){
     donsSpeciaux: document.getElementById('f_cuDons').value,
     observations: document.getElementById('f_cuObservations').value.trim(),
   };
-  if(!data.date){ toast('La date est obligatoire.','err'); return; }
+  if(!data.date){ toast('La date est obligatoire.','err'); dbg('saveCulte bloqué : date manquante', true); return; }
   try{
     if(existingId){
       await RG('cultes/'+existingId).update(data);
       logAction('Modification culte', data.typeCulte);
+      dbg('Culte modifié avec succès : ' + existingId);
     } else {
       data.createdAt = Date.now();
-      await RG('cultes').push(data);
+      const ref = await RG('cultes').push(data);
       logAction('Nouveau culte', data.typeCulte);
+      dbg('Nouveau culte créé avec succès, clé=' + ref.key);
     }
     toast('Culte enregistré.','ok');
     closeModal();
   }catch(e){
+    dbg('ERREUR saveCulte : ' + e.code + ' — ' + e.message, true);
     toast('Erreur lors de l\'enregistrement : '+e.message,'err');
     return;
   }
@@ -3079,18 +3125,27 @@ async function saveCene(existingId){
     sujet: document.getElementById('f_ceSujet').value.trim(),
     texteBiblique: document.getElementById('f_ceTexte').value.trim(),
   };
-  if(!data.date){ toast('La date est obligatoire.','err'); return; }
-  if(existingId){
-    await RG('saintesCenes/'+existingId).update(data);
-    logAction('Modification Sainte-Cène', data.date);
-  } else {
-    data.presences = {};
-    data.createdAt = Date.now();
-    await RG('saintesCenes').push(data);
-    logAction('Nouvelle Sainte-Cène', data.date);
+  if(!data.date){ toast('La date est obligatoire.','err'); dbg('saveCene bloqué : date manquante', true); return; }
+  dbg('saveCene() appelé, existingId=' + existingId);
+  try{
+    if(existingId){
+      await RG('saintesCenes/'+existingId).update(data);
+      logAction('Modification Sainte-Cène', data.date);
+      dbg('Sainte-Cène modifiée avec succès : ' + existingId);
+    } else {
+      data.presences = {};
+      data.createdAt = Date.now();
+      const ref = await RG('saintesCenes').push(data);
+      logAction('Nouvelle Sainte-Cène', data.date);
+      dbg('Nouvelle Sainte-Cène créée avec succès, clé=' + ref.key);
+    }
+    toast('Sainte-Cène enregistrée.','ok');
+    closeModal();
+  }catch(e){
+    dbg('ERREUR saveCene : ' + e.code + ' — ' + e.message, true);
+    toast('Erreur : '+e.message,'err');
+    return;
   }
-  toast('Sainte-Cène enregistrée.','ok');
-  closeModal();
   renderRegistre_cene();
 }
 async function openCeneDetail(id){
