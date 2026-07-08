@@ -2338,6 +2338,43 @@ async function markNotifSent(id){
 
 /* ====================== REGISTRE OFFICIEL DE L'ÉGLISE ====================== */
 const RG = (path) => R('registre/'+path);
+
+/* Fonction générique de suppression, réutilisée par tous les sous-modules du Registre.
+   REGISTRE_RENDER_MAP associe chaque type de nœud à sa fonction de rendu, pour rafraîchir
+   automatiquement la bonne liste après suppression. */
+const REGISTRE_RENDER_MAP = {
+  reunions: 'renderRegistre_reunions', cultes: 'renderRegistre_cultes', etudesBibliques: 'renderRegistre_etudes',
+  saintesCenes: 'renderRegistre_cene', membresBaptises: 'renderRegistre_membresB', veillees: 'renderRegistre_veillees',
+  reveils: 'renderRegistre_reveils', missions: 'renderRegistre_missions'
+};
+function confirmDeleteRegistreItem(type, id, label){
+  openModal(`
+    <div class="modal-head"><h3>Supprimer cet enregistrement ?</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <p style="color:var(--ink-dim);font-size:13.5px;">Tu es sur le point de supprimer définitivement :</p>
+      <p style="color:var(--ink);font-size:14px;font-weight:600;margin-top:8px;">${esc(label)}</p>
+      <div class="panel" style="background:rgba(224,88,79,.08);border-color:rgba(224,88,79,.35);margin-top:12px;">
+        <p style="color:var(--ink-dim);font-size:12.5px;margin:0;">Cette action est irréversible.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger" onclick="deleteRegistreItem('${type}','${id}')">Oui, supprimer</button>
+    </div>
+  `);
+}
+async function deleteRegistreItem(type, id){
+  try{
+    await RG(type+'/'+id).remove();
+    logAction('Suppression '+type, id);
+    toast('Enregistrement supprimé.','ok');
+    closeModal();
+    const fn = window[REGISTRE_RENDER_MAP[type]];
+    if(typeof fn === 'function') fn();
+  }catch(e){
+    toast('Erreur lors de la suppression : '+e.message,'err');
+  }
+}
 let _registreTab = 'accueil';
 const REGISTRE_TABS = [
   {id:'accueil', label:'Tableau de bord'},
@@ -2585,6 +2622,7 @@ async function openReunionDetail(id){
       ${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='closeModal();openReunionForm(${JSON.stringify(r).replace(/'/g,"&#39;")})'>✏️ Modifier</button>`:''}
       <button class="btn btn-ghost btn-sm" onclick="printReunionPV('${r.id}')">🖨 Générer le PV</button>
       ${isPasteur() && r.statutApprobation!=='approuve' ? `<button class="btn btn-gold btn-sm" onclick="approuverReunion('${r.id}')">Approuver le PV</button>` : ''}
+      ${canManageRegistre()?`<button class="btn btn-danger btn-sm" onclick="confirmDeleteRegistreItem('reunions','${r.id}','${esc(r.type||'Réunion').replace(/'/g,"&#39;")} — ${fmtDate(r.date)}')">🗑 Supprimer</button>`:''}
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">Fermer</button>
     </div>
   `);
@@ -2722,7 +2760,7 @@ function renderMembresBRows(list){
     <td>${fmtDate(m.dateBapteme)}</td>
     <td>${esc(m.ministere||'—')}</td>
     <td>${statutBadge(m.statut)}</td>
-    <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openMembreBForm(${JSON.stringify(m).replace(/'/g,"&#39;")})'>✏️</button>`:''}</td>
+    <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openMembreBForm(${JSON.stringify(m).replace(/'/g,"&#39;")})'>✏️</button><button class="btn btn-ghost btn-sm" onclick="confirmDeleteRegistreItem('membresBaptises','${m.id}','${esc((m.prenom||'')+' '+(m.nom||'')).replace(/'/g,"&#39;")}')">🗑</button>`:''}</td>
   </tr>`).join('') : `<tr><td colspan="6"><div class="empty-state"><p>Aucun membre baptisé enregistré.</p></div></td></tr>`;
 }
 function filterMembresB(q){
@@ -2884,7 +2922,7 @@ async function renderRegistre_cultes(){
         <td>${esc(c.predicateur||'—')}</td>
         <td>${total}</td>
         <td>${fmtMoney(Number(c.dimes||0)+Number(c.offrandes||0))}</td>
-        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openCulteForm(${JSON.stringify(c).replace(/'/g,"&#39;")})'>✏️</button>`:''}</td>
+        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openCulteForm(${JSON.stringify(c).replace(/'/g,"&#39;")})'>✏️</button><button class="btn btn-ghost btn-sm" onclick="confirmDeleteRegistreItem('cultes','${c.id}','${esc(c.typeCulte||'Culte').replace(/'/g,"&#39;")} — ${fmtDate(c.date)}')">🗑</button>`:''}</td>
       </tr>`;}).join('') : `<tr><td colspan="6"><div class="empty-state"><p>Aucun culte enregistré.</p></div></td></tr>`}
     </tbody></table></div></div>
   `;
@@ -2997,7 +3035,7 @@ async function renderRegistre_etudes(){
         <td>${fmtDate(e.date)}</td>
         <td>${esc(e.enseignant||'—')}</td>
         <td>${e.nbParticipants||0}</td>
-        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openEtudeForm(${JSON.stringify(e).replace(/'/g,"&#39;")})'>✏️</button>`:''}</td>
+        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openEtudeForm(${JSON.stringify(e).replace(/'/g,"&#39;")})'>✏️</button><button class="btn btn-ghost btn-sm" onclick="confirmDeleteRegistreItem('etudesBibliques','${e.id}','${esc(e.sujet||'Étude biblique').replace(/'/g,"&#39;")} — ${fmtDate(e.date)}')">🗑</button>`:''}</td>
       </tr>`).join('') : `<tr><td colspan="5"><div class="empty-state"><p>Aucune étude biblique enregistrée.</p></div></td></tr>`}
     </tbody></table></div></div>
   `;
@@ -3172,6 +3210,7 @@ async function openCeneDetail(id){
     </div>
     <div class="modal-foot">
       ${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='closeModal();openCeneForm(${JSON.stringify(c).replace(/'/g,"&#39;")})'>✏️ Modifier</button>`:''}
+      ${canManageRegistre()?`<button class="btn btn-danger btn-sm" onclick="confirmDeleteRegistreItem('saintesCenes','${c.id}','Sainte-Cène — ${fmtDate(c.date)}')">🗑 Supprimer</button>`:''}
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">Fermer</button>
     </div>
   `);
@@ -3230,7 +3269,7 @@ async function renderRegistre_veillees(){
         <td>${esc(v.dirigeant||'—')}</td>
         <td>${esc(v.groupeResponsable||'—')}</td>
         <td>${v.nbParticipants||0}</td>
-        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openVeilleeForm(${JSON.stringify(v).replace(/'/g,"&#39;")})'>✏️</button>`:''}</td>
+        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openVeilleeForm(${JSON.stringify(v).replace(/'/g,"&#39;")})'>✏️</button><button class="btn btn-ghost btn-sm" onclick="confirmDeleteRegistreItem('veillees','${v.id}','Veillée — ${fmtDate(v.date)}')">🗑</button>`:''}</td>
       </tr>`).join('') : `<tr><td colspan="5"><div class="empty-state"><p>Aucune veillée enregistrée.</p></div></td></tr>`}
     </tbody></table></div></div>
   `;
@@ -3299,7 +3338,7 @@ async function renderRegistre_reveils(){
         <td>${esc(r.typeReveil||'—')}</td>
         <td>${esc(r.sujet||'—')}</td>
         <td>${esc(r.duree||'—')}</td>
-        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openReveilForm(${JSON.stringify(r).replace(/'/g,"&#39;")})'>✏️</button>`:''}</td>
+        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openReveilForm(${JSON.stringify(r).replace(/'/g,"&#39;")})'>✏️</button><button class="btn btn-ghost btn-sm" onclick="confirmDeleteRegistreItem('reveils','${r.id}','${esc(r.sujet||'Réveil').replace(/'/g,"&#39;")} — ${fmtDate(r.date)}')">🗑</button>`:''}</td>
       </tr>`).join('') : `<tr><td colspan="5"><div class="empty-state"><p>Aucun réveil enregistré.</p></div></td></tr>`}
     </tbody></table></div></div>
   `;
@@ -3367,7 +3406,7 @@ async function renderRegistre_missions(){
         <td>${fmtDate(m.date)}</td>
         <td>${esc(m.lieu||'—')}</td>
         <td>${m.conversions||0}</td>
-        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openMissionForm(${JSON.stringify(m).replace(/'/g,"&#39;")})'>✏️</button>`:''}</td>
+        <td>${canManageRegistre()?`<button class="btn btn-ghost btn-sm" onclick='openMissionForm(${JSON.stringify(m).replace(/'/g,"&#39;")})'>✏️</button><button class="btn btn-ghost btn-sm" onclick="confirmDeleteRegistreItem('missions','${m.id}','${esc(m.typeMission||'Mission').replace(/'/g,"&#39;")} — ${fmtDate(m.date)}')">🗑</button>`:''}</td>
       </tr>`).join('') : `<tr><td colspan="5"><div class="empty-state"><p>Aucune mission enregistrée.</p></div></td></tr>`}
     </tbody></table></div></div>
   `;
