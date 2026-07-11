@@ -689,6 +689,9 @@ const NAV_CONFIG = {
       {id:'publications', label:'Publications', icon:'📢'},
       {id:'rencontres', label:'Rencontres', icon:'🤝'},
     ]},
+    {group:'Vie de l\'Église', items:[
+      {id:'rapportEglise', label:'Rapport de l\'Église', icon:'📖'},
+    ]},
   ]
 };
 
@@ -778,7 +781,8 @@ function navTo(view){
   const titles = {dashboard:'Tableau de bord', ministeres:'Gestion des ministères', membres:'Membres & Comités',
     activites:'Activités', financements:'Demandes de financement', rapports:'Rapports d\'activité',
     calendrier:'Calendrier annuel', publications:'Publications', rencontres:'Rencontres', journal:'Journal d\'audit',
-    notifications:'Notifications WhatsApp', comptes:'Comptes Pasteur / Administrateur', registre:'Registre Officiel de l\'Église'};
+    notifications:'Notifications WhatsApp', comptes:'Comptes Pasteur / Administrateur', registre:'Registre Officiel de l\'Église',
+    rapportEglise:'Rapport de l\'Église'};
   document.getElementById('viewTitle').textContent = titles[view] || view;
   const fn = window['render_'+view];
   if(typeof fn === 'function'){ fn(); } else { document.getElementById('contentArea').innerHTML = '<div class="empty-state"><div class="ic">⚒</div><p>Module en construction.</p></div>'; }
@@ -3518,6 +3522,88 @@ function filterArchives(){
   if(type) list = list.filter(a=>a.type===type);
   if(motCle) list = list.filter(a=>JSON.stringify(a.raw).toLowerCase().includes(motCle));
   renderArchivesRows(list);
+}
+
+/* ====================== RAPPORT DE L'ÉGLISE (lecture seule pour les responsables) ====================== */
+const RAPPORT_EGLISE_LABELS = {
+  cultes: {icon:'⛪', nom:'Culte', titreField:'typeCulte'},
+  reunions: {icon:'📝', nom:'Réunion', titreField:'type'},
+  etudesBibliques: {icon:'📖', nom:'Étude biblique', titreField:'sujet'},
+  saintesCenes: {icon:'🍞', nom:'Sainte-Cène', titreField:null},
+  veillees: {icon:'🌙', nom:'Veillée de nuit', titreField:'dirigeant'},
+  reveils: {icon:'🔥', nom:'Réveil', titreField:'sujet'},
+  missions: {icon:'✈️', nom:'Mission & Évangélisation', titreField:'typeMission'},
+};
+
+async function render_rapportEglise(){
+  const el = document.getElementById('contentArea');
+  el.innerHTML = '<div class="empty-state"><p>Chargement…</p></div>';
+  const types = Object.keys(RAPPORT_EGLISE_LABELS);
+  const snaps = await Promise.all(types.map(t=>RG(t).once('value')));
+  let all = [];
+  snaps.forEach((snap, i)=>{
+    const type = types[i];
+    snap.forEach(c=>{
+      const v = c.val();
+      const meta = RAPPORT_EGLISE_LABELS[type];
+      const titre = meta.titreField ? (v[meta.titreField] || meta.nom) : meta.nom;
+      all.push({ type, id:c.key, date:v.date, titre, raw:v });
+    });
+  });
+  all.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  el.innerHTML = `
+    <p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:16px;">Enregistrements officiels de la vie de l'église (réunions, cultes, études bibliques, Sainte-Cène, veillées, réveils, missions), en lecture seule.</p>
+    ${all.length ? all.map(item=>{
+      const meta = RAPPORT_EGLISE_LABELS[item.type];
+      return `<div class="panel" style="cursor:pointer;margin-bottom:10px;" onclick="openRapportEgliseDetail('${item.type}','${item.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <span style="font-size:18px;margin-right:8px;">${meta.icon}</span>
+            <span style="font-size:14px;color:var(--ink);font-weight:600;">${esc(item.titre)}</span>
+            <span class="badge badge-mute" style="margin-left:8px;">${meta.nom}</span>
+          </div>
+          <span style="font-size:12px;color:var(--ink-faint);">${fmtDate(item.date)}</span>
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty-state"><div class="ic">📖</div><p>Aucun enregistrement pour le moment.</p></div>`}
+  `;
+}
+
+async function openRapportEgliseDetail(type, id){
+  // Réunions et Sainte-Cène ont déjà des fenêtres de détail complètes (avec présences,
+  // décisions, etc.) qui masquent automatiquement les boutons modifier/supprimer pour
+  // qui n'a pas les droits de gestion — on les réutilise telles quelles.
+  if(type==='reunions'){ openReunionDetail(id); return; }
+  if(type==='saintesCenes'){ openCeneDetail(id); return; }
+
+  const snap = await RG(type+'/'+id).once('value');
+  const v = snap.val();
+  const FIELD_LABELS = {
+    cultes: [['typeCulte','Type'],['date','Date',fmtDate],['heure','Heure'],['president','Président'],['respLouange','Resp. louange'],['respPriere','Resp. prière'],['lecteur','Lecteur biblique'],['predicateur','Prédicateur'],['sujet','Sujet'],['texteBiblique','Texte biblique'],['chorales','Chorales participantes'],['annonces','Annonces'],['nbHommes','Nombre d\'hommes'],['nbFemmes','Nombre de femmes'],['nbEnfants','Nombre d\'enfants'],['dimes','Dîmes',fmtMoney],['offrandes','Offrandes',fmtMoney],['donsSpeciaux','Dons spéciaux',fmtMoney],['observations','Observations']],
+    etudesBibliques: [['date','Date',fmtDate],['heure','Heure'],['ouvrant','Ouvrant'],['conducteur','Conducteur'],['enseignant','Enseignant'],['sujet','Sujet'],['textePrincipal','Texte principal'],['textesComplementaires','Textes complémentaires'],['nbParticipants','Nombre de participants'],['questions','Questions posées'],['reponses','Réponses'],['exercices','Exercices donnés'],['observations','Observations']],
+    veillees: [['date','Date',fmtDate],['horaire','Horaire'],['dirigeant','Dirigeant'],['groupeResponsable','Groupe responsable'],['groupePresent','Groupe présent'],['nbParticipants','Nombre de participants'],['programme','Programme réalisé'],['observations','Observations']],
+    reveils: [['date','Date',fmtDate],['typeReveil','Type de réveil'],['sujet','Sujet'],['duree','Durée'],['invites','Invités'],['groupesParticipants','Groupes participants'],['responsablesRaw','Responsables prévus'],['programme','Programme']],
+    missions: [['typeMission','Type'],['date','Date',fmtDate],['lieu','Lieu'],['organisateur','Organisateur'],['responsable','Responsable'],['objectif','Objectif'],['nbParticipants','Participants'],['invitations','Invitations'],['conversions','Conversions'],['restaurations','Restaurations'],['resultats','Résultats'],['temoignages','Témoignages'],['depenses','Dépenses',fmtMoney],['observations','Observations']],
+  };
+  const fields = FIELD_LABELS[type] || [];
+  const meta = RAPPORT_EGLISE_LABELS[type];
+  const titre = meta.titreField ? (v[meta.titreField] || meta.nom) : meta.nom;
+
+  openModal(`
+    <div class="modal-head"><h3>${meta.icon} ${esc(titre)}</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      ${fields.map(([key,label,formatter])=>{
+        const val = v[key];
+        if(val===undefined || val===null || val==='') return '';
+        const display = formatter ? formatter(val) : esc(val);
+        return `<p style="font-size:12.5px;color:var(--ink-dim);margin:0 0 8px;"><b style="color:var(--ink);">${label} :</b> ${display}</p>`;
+      }).join('')}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-gold btn-sm" onclick="closeModal()">Fermer</button>
+    </div>
+  `);
 }
 </script>
 </body>
